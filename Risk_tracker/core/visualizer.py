@@ -1,31 +1,128 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
+import shap
 
-def plot_advanced_health(monthly_df, burnout_score):
-    plt.style.use('dark_background')
+
+# ---------------------------------------------------
+# PROFIT FORECAST PLOT
+# ---------------------------------------------------
+
+def plot_advanced_health(monthly_df, forecast, burnout):
+
+    plt.style.use("dark_background")
+
     fig, ax = plt.subplots(figsize=(12, 7))
 
-    # 1. Historical Net Cash Flow
-    ax.plot(monthly_df.index, monthly_df['net_cash_flow'], label='Historical Net Profit', 
-            color='#2ecc71', marker='o', linewidth=2, alpha=0.8)
-    
-    # 2. Simple Forecast Overlay (for visuals)
-    last_val = monthly_df['net_cash_flow'].iloc[-1]
-    future_dates = pd.date_range(start=monthly_df.index[-1], periods=4, freq='MS')[1:]
-    # Mocking visual trend for the dashboard
-    ax.plot(future_dates, [last_val*0.9, last_val*0.85, last_val*0.8], 
-            label='AI Trend Projection', color='#3498db', linestyle='--', marker='s')
+    ax.plot(
+        monthly_df.index,
+        monthly_df["net_cash_flow"],
+        label="Historical Profit",
+        marker="o"
+    )
 
-    ax.fill_between(monthly_df.index, monthly_df['net_cash_flow'], color='#2ecc71', alpha=0.1)
-    
-    if burnout_score > 60:
-        ax.text(0.02, 0.95, f"⚠️ BURNOUT ALERT: {burnout_score}%", 
-                transform=ax.transAxes, color='#e74c3c', fontweight='bold', fontsize=12)
+    future_dates = pd.date_range(
+        start=monthly_df.index[-1],
+        periods=4,
+        freq="MS"
+    )[1:]
 
-    ax.set_title('AI Business Intelligence: Net Cash Flow Forecast', fontsize=14, pad=20)
-    ax.set_ylabel('Profit / Loss ($)')
+    ax.plot(
+        future_dates,
+        forecast,
+        label="AI Forecast",
+        linestyle="--",
+        marker="s"
+    )
+
+    ax.set_title("AI Business Intelligence: Net Cash Flow Forecast")
+
+    if burnout > 60:
+        ax.text(
+            0.02,
+            0.95,
+            f"Burnout Alert: {burnout}%",
+            transform=ax.transAxes,
+            color="red"
+        )
+
     ax.legend()
-    plt.grid(True, alpha=0.1)
-    plt.tight_layout()
+
+    plt.grid(alpha=0.2)
+
     plt.show()
+
+
+# ---------------------------------------------------
+# CLIENT RISK DISTRIBUTION
+# ---------------------------------------------------
+
+def plot_risk_distribution(client_df):
+
+    risk_bins = pd.cut(
+        client_df["RISK_%"],
+        bins=[0, 30, 60, 100],
+        labels=["Low", "Medium", "High"]
+    )
+
+    counts = risk_bins.value_counts().sort_index()
+
+    plt.figure(figsize=(6, 6))
+
+    plt.pie(
+        counts.values,
+        labels=counts.index,
+        autopct="%1.1f%%",
+        colors=["#2ecc71", "#f1c40f", "#e74c3c"]
+    )
+
+    plt.title("Client Risk Distribution")
+
+    plt.show()
+
+
+# ---------------------------------------------------
+# SHAP SUMMARY PLOT
+# ---------------------------------------------------
+
+def plot_shap_summary(model, X):
+
+    shap_values, explainer = model.explain_predictions(X)
+
+    if shap_values is None:
+        print("Model not trained yet.")
+        return
+
+    # Handle new SHAP output format
+    if len(shap_values.shape) == 3:
+        shap_values = shap_values[:, :, 1]
+
+    shap.summary_plot(shap_values, X)
+
+
+# ---------------------------------------------------
+# SHAP WATERFALL PLOT
+# ---------------------------------------------------
+
+def plot_shap_waterfall(model, X):
+
+    shap_values, explainer = model.explain_predictions(X)
+
+    if shap_values is None:
+        return
+
+    # Handle new SHAP format
+    if len(shap_values.shape) == 3:
+        shap_vals = shap_values[:, :, 1]
+        base_val = explainer.expected_value[1]
+    else:
+        shap_vals = shap_values
+        base_val = explainer.expected_value
+
+    shap.plots.waterfall(
+        shap.Explanation(
+            values=shap_vals[0],
+            base_values=base_val,
+            data=X.iloc[0],
+            feature_names=X.columns
+        )
+    )
