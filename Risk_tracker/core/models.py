@@ -1,105 +1,220 @@
 import numpy as np
-import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from statsmodels.tsa.arima.model import ARIMA
+from sklearn.model_selection import cross_val_score
+from prophet import Prophet
+import shap
+
+
+# ---------------------------------------------------
+# CHURN PREDICTION MODEL
+# ---------------------------------------------------
 
 class ChurnPredictorML:
+
     def __init__(self):
-        # We use Random Forest because it handles non-linear business patterns well
-        self.model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+        self.model = RandomForestClassifier(
+            n_estimators=200,
+            class_weight="balanced",
+            random_state=42
+        )
+
         self.is_trained = False
 
-    def train(self, feature_df, labels):
-        """Trains the model on historical client behavior."""
-        if len(feature_df) < 10: return # Not enough data to learn
-        self.model.fit(feature_df, labels)
+    def train(self, X, y):
+
+        scores = cross_val_score(
+            self.model,
+            X,
+            y,
+            cv=5,
+            scoring="roc_auc"
+        )
+
+        print("\nCross Validation AUC:", scores)
+        print("Mean AUC:", scores.mean())
+
+        self.model.fit(X, y)
+
         self.is_trained = True
 
-    def predict_probs(self, feature_df):
-        """Returns the raw ML churn probability (0 to 100)."""
+    def predict_probs(self, X):
+
         if not self.is_trained:
-            return np.zeros(len(feature_df))
-        return self.model.predict_proba(feature_df)[:, 1] * 100
+            return np.zeros(len(X))
+
+        return self.model.predict_proba(X)[:, 1] * 100
+
+    def explain_predictions(self, X):
+
+        if not self.is_trained:
+            return None, None
+
+        explainer = shap.TreeExplainer(self.model)
+
+        shap_values = explainer.shap_values(X)
+
+        return shap_values, explainer
+
+
+# ---------------------------------------------------
+# REVENUE FORECASTER
+# ---------------------------------------------------
+
+class RevenueForecaster:
+
+    def forecast(self, series):
+
+        df = series.reset_index()
+
+        df.columns = ["ds", "y"]
+
+        model = Prophet(
+            yearly_seasonality=True,
+            weekly_seasonality=False,
+            daily_seasonality=False
+        )
+
+        model.fit(df)
+
+        future = model.make_future_dataframe(
+            periods=3,
+            freq="MS"
+        )
+
+        forecast = model.predict(future)
+
+        return forecast["yhat"].tail(3).tolist()
+
+
+# ---------------------------------------------------
+# REVENUE ANOMALY DETECTION
+# ---------------------------------------------------
+
+class RevenueAnomalyDetector:
+
+    def detect(self, series):
+
+        mean = series.mean()
+        std = series.std()
+
+        threshold = mean - 2 * std
+
+        anomalies = series[series < threshold]
+
+        return anomalies
+
+
+# ---------------------------------------------------
+# ADAPTIVE INTELLIGENCE ENGINE
+# ---------------------------------------------------
 
 class AdaptiveIntelligenceEngine:
-    def __init__(self):
-        self.ml_layer = ChurnPredictorML()
 
     def predict_lifecycle(self, row):
-        # Lifecycle stages remain heuristic (Business Rules)
-        if row['payment_count'] <= 2: return "NEW"
-        if row['recency'] > 60: return "CHURNED"
-        if row['revenue_trend'] < -10: return "DECLINING"
-        if row['revenue_trend'] > 10: return "GROWING"
-        if row['volatility'] < 0.2: return "STABLE"
+
+        if row["payment_count"] <= 2:
+            return "NEW"
+
+        if row["recency"] > 60:
+            return "CHURNED"
+
+        if row["revenue_trend"] < -10:
+            return "DECLINING"
+
+        if row["revenue_trend"] > 10:
+            return "GROWING"
+
+        if row["volatility"] < 0.2:
+            return "STABLE"
+
         return "ACTIVE"
 
     def calculate_hybrid_risk(self, row, ml_prob):
-        """
-        The Hybrid Layer: Blends ML patterns with Domain Rules.
-        ML_Prob: What the data says.
-        Rules: What the business owner knows (Domain Knowledge).
-        """
-        # 1. Domain Heuristics (Safety Layer)
+
         rule_risk = 0
-        if row['recency'] > (row['avg_gap'] * 1.5): rule_risk += 50
-        if row['volatility'] > 0.5: rule_risk += 30
+
+        if row["recency"] > (row["avg_gap"] * 1.5):
+            rule_risk += 50
+
+        if row["volatility"] > 0.5:
+            rule_risk += 30
+
         rule_risk = min(rule_risk, 100)
 
-        # 2. Adaptive Weighting
-        # If we have lots of payments, trust the ML more (up to 80%)
-        ml_weight = min(row['payment_count'] / 15, 0.8)
-        
-        final_score = (ml_prob * ml_weight) + (rule_risk * (1 - ml_weight))
-        return round(final_score, 1)
+        ml_weight = min(row["payment_count"] / 15, 0.8)
+
+        final = (ml_prob * ml_weight) + (rule_risk * (1 - ml_weight))
+
+        return round(final, 1)
+
+
+# ---------------------------------------------------
+# BUSINESS HEALTH ENGINE
+# ---------------------------------------------------
 
 class BusinessHealthEngine:
-    def calculate_burnout_risk(self, client_stats):
-        """Calculate overall business burnout risk based on client health."""
-        high_risk_clients = (client_stats['RISK_%'] > 70).sum()
-        total_clients = len(client_stats)
-        burnout_percentage = (high_risk_clients / total_clients) * 100
-        return round(burnout_percentage, 1)
 
-class RevenueForecaster:
-    def predict_net_cash_flow(self, monthly_stats):
-        """Simple linear trend forecast for next 3 months."""
-        if len(monthly_stats) < 3:
-            return [0, 0, 0]
-        
-        recent = monthly_stats['net_cash_flow'].tail(3).values
-        trend = np.polyfit(range(3), recent, 1)[0]
-        
-        forecast = []
-        for i in range(1, 4):
-            forecast.append(recent[-1] + (trend * i))
-        
-        return [round(x, 2) for x in forecast]
+    def calculate_burnout_risk(self, client_stats):
+
+        high = (client_stats["RISK_%"] > 70).sum()
+
+        total = len(client_stats)
+
+        return round((high / total) * 100, 1)
+
+
+# ---------------------------------------------------
+# PRICING OPTIMIZER
+# ---------------------------------------------------
 
 class HeuristicPricingOptimizer:
+
     def suggest_adjustment(self, row):
-        """Suggest pricing strategy based on client metrics."""
-        if row['STAGE'] == 'DECLINING':
+
+        if row["RISK_%"] > 60:
+            return "Retention Discount (-10%)"
+
+        if row["STAGE"] == "DECLINING":
             return "Reduce Rate 10%"
-        elif row['STAGE'] == 'GROWING':
-            return "Increase Rate 15%"
-        elif row['RISK_%'] > 50:
-            return "Maintain Rate"
-        else:
-            return "Increase Rate 5%"
+
+        if row["STAGE"] == "GROWING":
+            return "Premium Rate (+15%)"
+
+        if row["STAGE"] == "STABLE":
+            return "Standard Increase (+5%)"
+
+        return "Maintain Rate"
+
+
+# ---------------------------------------------------
+# CLV ENGINE
+# ---------------------------------------------------
 
 class CLVEngine:
+
     def estimate_predictive_clv(self, row):
-        """Estimate Customer Lifetime Value based on current metrics."""
-        base_value = row['total_revenue'] / max(row['payment_count'], 1)
-        months_active = row['payment_count'] * row['avg_gap'] / 30
-        
-        # Simple CLV estimation
-        if row['STAGE'] == 'CHURNED':
-            return round(row['total_revenue'] * 0.8, 2)
-        elif row['STAGE'] == 'DECLINING':
-            return round(row['total_revenue'] * 1.2, 2)
-        elif row['STAGE'] == 'GROWING':
-            return round(row['total_revenue'] * 2.5, 2)
+
+        months = row["payment_count"] * row["avg_gap"] / 30
+
+        months = max(months, 0.5)
+
+        tenure = min(months / 12, 2)
+
+        avg_month = row["total_revenue"] / months
+
+        if row["STAGE"] == "CHURNED":
+            mult = 0.8
+
+        elif row["STAGE"] == "DECLINING":
+            mult = 1.2
+
+        elif row["STAGE"] == "GROWING":
+            mult = 2.5
+
         else:
-            return round(row['total_revenue'] * 1.8, 2)
+            mult = 1.8
+
+        clv = avg_month * months * mult * tenure
+
+        return round(clv, 2)
