@@ -2,6 +2,10 @@ import pandas as pd
 import numpy as np
 
 
+# ------------------------------------------------
+# CHURN LABEL GENERATION
+# ------------------------------------------------
+
 def generate_churn_label(df):
 
     df["churn_label"] = (
@@ -13,33 +17,89 @@ def generate_churn_label(df):
     return df
 
 
+# ------------------------------------------------
+# ADAPTIVE DATA PIPELINE
+# ------------------------------------------------
+
 class AdaptiveDataPipeline:
 
-    def __init__(self, tx_path, client_path, invoice_path):
+    def __init__(self, tx_path=None, client_path=None, invoice_path=None,
+                 tx_df=None, client_df=None, invoice_df=None):
 
         self.tx_path = tx_path
         self.client_path = client_path
         self.invoice_path = invoice_path
 
+        self.tx_df = tx_df
+        self.client_df = client_df
+        self.invoice_df = invoice_df
+
 
     def process(self):
 
-        df_tx = pd.read_csv(self.tx_path)
+        # ------------------------------------------------
+        # LOAD TRANSACTIONS
+        # ------------------------------------------------
+
+        if self.tx_df is not None:
+            df_tx = self.tx_df.copy()
+        else:
+            df_tx = pd.read_csv(self.tx_path)
 
         df_tx = df_tx.drop_duplicates()
+
         df_tx = df_tx.dropna(subset=["client_id", "amount"])
 
-        df_tx["date"] = pd.to_datetime(df_tx["date"])
+        df_tx["date"] = pd.to_datetime(df_tx["date"], errors="coerce")
+
+        df_tx = df_tx.dropna(subset=["date"])
+
+
+        # Safety fallback for missing columns
+        if "type" not in df_tx.columns:
+            df_tx["type"] = "income"
+
+        if "category" not in df_tx.columns:
+            df_tx["category"] = "Service"
 
 
         # ------------------------------------------------
-        # INVOICE DELAYS
+        # LOAD INVOICES
         # ------------------------------------------------
 
-        df_inv = pd.read_csv(self.invoice_path)
+        if self.invoice_df is not None:
 
-        df_inv["paid_date"] = pd.to_datetime(df_inv["paid_date"])
-        df_inv["due_date"] = pd.to_datetime(df_inv["due_date"])
+            df_inv = self.invoice_df.copy()
+
+        elif self.invoice_path is not None:
+
+            df_inv = pd.read_csv(self.invoice_path)
+
+        else:
+            # Auto-generate invoices if missing
+            df_inv = df_tx.copy()
+
+            df_inv["invoice_id"] = [
+                f"INV_{i}" for i in range(len(df_inv))
+            ]
+
+            df_inv["due_date"] = df_inv["date"] - pd.Timedelta(days=30)
+
+            df_inv["paid_date"] = df_inv["date"]
+
+            df_inv = df_inv[[
+                "invoice_id",
+                "client_id",
+                "due_date",
+                "paid_date",
+                "amount"
+            ]]
+
+
+        df_inv["paid_date"] = pd.to_datetime(df_inv["paid_date"], errors="coerce")
+        df_inv["due_date"] = pd.to_datetime(df_inv["due_date"], errors="coerce")
+
+        df_inv = df_inv.dropna(subset=["paid_date", "due_date"])
 
         df_inv["delay"] = (df_inv["paid_date"] - df_inv["due_date"]).dt.days
 
@@ -53,6 +113,10 @@ class AdaptiveDataPipeline:
         income_df = df_tx[df_tx["type"] == "income"].sort_values(
             ["client_id", "date"]
         )
+
+        if income_df.empty:
+            raise ValueError("No income transactions found.")
+
 
         total_biz_revenue = income_df["amount"].sum()
 
