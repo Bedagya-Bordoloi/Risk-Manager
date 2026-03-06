@@ -1,3 +1,15 @@
+import os
+
+# -------------------------------------------------------
+# PATH CONFIGURATION (PROFESSIONAL WAY)
+# -------------------------------------------------------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+
+
 from core.data_pipelining import AdaptiveDataPipeline
 from core.models import (
     AdaptiveIntelligenceEngine,
@@ -18,6 +30,12 @@ from core.visualizer import (
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, confusion_matrix
 
+from core.ingestion import load_user_file
+from core.mapper import auto_map_columns
+from core.validator import validate_transactions
+from core.manual_entry import load_manual_data
+from core.dataset_builder import build_datasets_from_transactions
+
 
 # -------------------------------------------------------
 # ANALYSIS SERVICE
@@ -25,11 +43,54 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_a
 
 def run_analysis_service():
 
-    pipeline = AdaptiveDataPipeline(
-        'data/transactions.csv',
-        'data/clients.csv',
-        'data/invoices.csv'
-    )
+    USE_USER_FILE = False
+    USE_MANUAL_ENTRY = False
+
+    # ------------------------------
+    # MANUAL ENTRY MODE
+    # ------------------------------
+
+    if USE_MANUAL_ENTRY:
+
+        tx_df, inv_df = load_manual_data()
+
+        pipeline = AdaptiveDataPipeline(
+            tx_df=tx_df,
+            invoice_df=inv_df
+        )
+
+    # ------------------------------
+    # CSV UPLOAD MODE
+    # ------------------------------
+
+    elif USE_USER_FILE:
+
+        user_file = os.path.join(UPLOAD_DIR, "user_data.csv")
+        user_df = load_user_file(user_file)
+
+        user_df = auto_map_columns(user_df)
+
+        user_df = validate_transactions(user_df)
+
+        df_clients, df_invoices = build_datasets_from_transactions(user_df)
+
+        pipeline = AdaptiveDataPipeline(
+            tx_df=user_df,
+            client_df=df_clients,
+            invoice_df=df_invoices
+        )
+
+    # ------------------------------
+    # DEFAULT DATASET
+    # ------------------------------
+
+    else:
+
+        pipeline = AdaptiveDataPipeline(
+            os.path.join(DATA_DIR, "transactions.csv"),
+            os.path.join(DATA_DIR, "clients.csv"),
+            os.path.join(DATA_DIR, "invoices.csv")
+        )
 
     monthly_stats, client_stats = pipeline.process()
 
@@ -176,10 +237,6 @@ def display_dashboard():
 
     print("═" * 110)
 
-    # ------------------------------------------------
-    # PRIORITY ACTION INBOX
-    # ------------------------------------------------
-
     print("\n📬 PRIORITY ACTION INBOX (Top High-Impact Tasks):")
 
     clients = data['clients']
@@ -218,10 +275,6 @@ def display_dashboard():
             f"[!] REVENUE: Client {upsell_target.index[0]} is highly stable. Ideal for a rate increase."
         )
 
-    # ------------------------------------------------
-    # CLIENT TABLE
-    # ------------------------------------------------
-
     print("\nCLIENT PERFORMANCE TABLE")
     print("═" * 110)
 
@@ -240,10 +293,6 @@ def display_dashboard():
     print(table)
 
     print("\n" + "═" * 110)
-
-    # ------------------------------------------------
-    # VISUAL DASHBOARD
-    # ------------------------------------------------
 
     plot_advanced_health(
         data['monthly'],
