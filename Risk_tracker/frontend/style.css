@@ -1,0 +1,17 @@
+body{
+font-family:Arial;
+background:#f5f7fb;
+padding:40px;
+}
+
+h1{
+color:#222;
+}
+
+.card{
+background:white;
+padding:20px;
+margin:20px;
+border-radius:10px;
+box-shadow:0 2px 10px rgba(0,0,0,0.1);
+}
