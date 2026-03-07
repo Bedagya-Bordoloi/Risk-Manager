@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Dashboard</title>
+<link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+<h1>AI Risk Manager Dashboard</h1>
+
+<div class="card">
+
+<h2>Burnout Risk</h2>
+<p id="burnout"></p>
+
+</div>
+
+<div class="card">
+
+<h2>Profit Forecast</h2>
+
+<ul id="forecast"></ul>
+
+</div>
+
+<script src="script.js"></script>
+
+<script>
+
+const data = JSON.parse(localStorage.getItem("analysis"))
+
+document.getElementById("burnout").innerText =
+data.burnout + "%"
+
+const forecastList = document.getElementById("forecast")
+
+data.forecast.forEach(value => {
+
+const li = document.createElement("li")
+li.innerText = "$" + value
+forecastList.appendChild(li)
+
+})
+
+</script>
+
+</body>
+
+</html>
